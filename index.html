@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<title>InfusionAI Live 0.3 – Merkmalsprüfung</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:#0b1220;color:#edf4ff}main{max-width:600px;margin:0 auto;padding:18px 14px 35px}
+h1{font-size:24px;letter-spacing:-.6px;margin:0 0 3px}.muted{font-size:12px;color:#a7bbd5;line-height:1.5}.card{background:#18253a;border:1px solid #30405b;border-radius:15px;padding:15px;margin-top:13px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:8px}.pill{font-size:11px;border:1px solid #526580;color:#d8e4f8;padding:5px 9px;border-radius:20px}
+label{display:block;font-size:12px;color:#b9c9df;margin-bottom:7px}select,button{border-radius:10px;border:1px solid #526580;background:#243750;color:#f4f7ff;padding:12px;font-size:14px}select{width:100%}button{cursor:pointer;font-weight:650}button.primary{background:#3d69ed;border-color:#7794ff}button:disabled{opacity:.55}
+.buttons{display:grid;grid-template-columns:1.25fr 1fr;gap:9px;margin-top:10px}.buttons button{width:100%}
+.preview{width:100%;aspect-ratio:3/4;position:relative;overflow:hidden;background:#030914;border:1px solid #314461;border-radius:14px}
+video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.aim{position:absolute;inset:12%;border:2px dashed rgba(232,243,255,.8);border-radius:14px;pointer-events:none}.aim span{position:absolute;top:6px;left:7px;background:rgba(0,0,0,.65);border-radius:6px;padding:4px 6px;font-size:11px}.camera-line{position:absolute;bottom:8px;left:9px;right:9px;padding:8px;background:rgba(0,0,0,.72);border-radius:7px;font-size:11px;color:#ddeaff}
+.result{padding:15px;border-radius:12px;border:1px solid #52647c;background:#27364a}.result.warn{background:#3b301c;border-color:#aa8548}.result.bad{background:#42262c;border-color:#bd636c}.result.candidate{background:#153a35;border-color:#4c9c8e}.result h2{font-size:18px;margin:0 0 7px}.result p{font-size:13px;margin:0;line-height:1.5;color:#d7e1ec}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px}.metric{padding:12px;border:1px solid #31435c;border-radius:10px;background:#0e1b2e}.metric strong{display:block;font-size:20px;font-variant-numeric:tabular-nums;margin-top:4px}.metric small{font-size:11px;color:#aac0d8}.row{display:flex;align-items:center;justify-content:space-between;gap:10px}.dot{width:9px;height:9px;display:inline-block;border-radius:99px;margin-right:5px;background:#52677e}.dot.on{background:#5ce0af}.orange.on{background:#ff9b42}.note{font-size:12px;line-height:1.55;color:#d7e2ee;background:#252c36;border-left:3px solid #eeb853;padding:12px;border-radius:5px;margin-top:13px}input[type=file]{max-width:100%;font-size:12px}hr{border:0;border-top:1px solid #35445e;margin:15px 0}
+</style>
+</head>
+<body>
+<main>
+<div class="top"><h1>InfusionAI <span style="color:#9bb7ff">LIVE</span></h1><span class="pill">Version 0.3</span></div>
+<p class="muted">Zwei-Merkmal-Demo · lokale Analyse im HONOR-Browser · keine Bilderübertragung</p>
+<div class="card"><label for="target">Erwarteter Artikel (manuell)</label><select id="target"><option value="intrafix_air">Intrafix Air</option><option value="chiraplus_p">Chiraplus-P</option></select></div>
+<div class="preview">
+<video id="video" autoplay playsinline muted></video>
+<div class="aim"><span>Prüfbereich – eine Leitung, neutraler Hintergrund</span></div>
+<div class="camera-line" id="cameraText">Kamera noch nicht gestartet</div>
+</div>
+<div class="buttons"><button class="primary" id="start">▶ Kamera starten</button><button id="flip" disabled>⟳ Kamera wechseln</button></div>
+<p class="muted" id="envInfo"></p>
+<div class="card">
+<div class="result" id="result"><h2 id="resultTitle">Bereit</h2><p id="resultBody">Leitung vor die Kamera legen, dann die Kamera starten.</p></div>
+<div class="metrics">
+ <div class="metric"><small><span id="greenDot" class="dot"></span>Türkisgrünes Anschlussmerkmal</small><strong id="greenStat">—</strong><small>Pixel pro Mio.</small></div>
+ <div class="metric"><small><span id="orangeDot" class="dot orange"></span>Orange Rollklemme (Farbhinweis)</small><strong id="orangeStat">—</strong><small>Pixel pro Mio.</small></div>
+</div>
+<p class="muted" id="infoText">Das Vorhandensein einer Farbe alleine ist keine Produktidentifikation. Die Prüfung ist absichtlich vorsichtig.</p>
+<hr>
+<label for="file">Optional: Foto statt Live-Kamera überprüfen</label><input type="file" id="file" accept="image/*">
+</div>
+<div class="note"><strong>Demo – keine medizinische Freigabe.</strong> Ein grüner Gegenstand wird nicht mehr als Intrafix Air bezeichnet. Selbst Grün + Orange ist nur ein Merkmals-Hinweis. Um unbekannte Leitungen und täuschend ähnliche Artikel zuverlässig auszuschließen, müssen wir Bauteile lokalisieren, ihre Form prüfen und mit Negativbeispielen trainieren. Ein fehlendes Merkmal kann auch durch Verdeckung oder Licht entstehen.</div>
+</main>
+<canvas id="work" hidden></canvas>
+<script>
+(()=>{
+'use strict';
+const $=id=>document.getElementById(id);
+const video=$('video'),canvas=$('work'),ctx=canvas.getContext('2d',{willReadFrequently:true});
+const start=$('start'),flip=$('flip'),target=$('target'),file=$('file');
+let stream=null,interval=null,facing='environment',history=[],last=null;
+function state(kind,head,description){$('result').className='result'+(kind?' '+kind:'');$('resultTitle').textContent=head;$('resultBody').textContent=description;}
+function stop(){if(interval){clearInterval(interval);interval=null;}if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}video.srcObject=null;start.textContent='▶ Kamera starten';flip.disabled=true;}
+async function camera(){stop();history=[];last=null;try{
+ if(!navigator.mediaDevices?.getUserMedia)throw new Error('Keine sichere Kamera-Umgebung. App über GitHub Pages mit HTTPS öffnen.');
+ stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:960}}});
+ video.srcObject=stream;await video.play();const s=stream.getVideoTracks()[0].getSettings();$('cameraText').textContent=(facing==='environment'?'Rückkamera':'Frontkamera')+' · '+(s.width||'')+' × '+(s.height||'')+' · Leitung vollständig in Prüfbereich';
+ start.textContent='■ Kamera stoppen';flip.disabled=false;state('','Suche nach Bauteilmerkmalen …','Für den Test eine helle, matte Unterlage verwenden.');interval=setInterval(()=>analyze(video),300);
+ }catch(e){state('bad','Kamera konnte nicht starten',(e.name||'Fehler')+': '+e.message);$('cameraText').textContent='Bitte HTTPS und Chrome-Kameraberechtigung prüfen.';}}
+function hsv(r,g,b){const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;
+ if(d){if(max===r)h=((g-b)/d)%6;else if(max===g)h=(b-r)/d+2;else h=(r-g)/d+4;h=(h*60+360)%360;}return [h,d?d/max:0,max];}
+function analyze(source){let sw=source.videoWidth||source.naturalWidth||source.width,sh=source.videoHeight||source.naturalHeight||source.height;if(!sw||!sh)return;
+ const w=420,h=Math.round(w*sh/sw);canvas.width=w;canvas.height=h;ctx.drawImage(source,0,0,w,h);
+ // Prüfen nur innerhalb des markierten zentralen Bereichs. Video bitte mittig ausrichten.
+ const x0=Math.floor(w*.12),x1=Math.ceil(w*.88),y0=Math.floor(h*.12),y1=Math.ceil(h*.88);
+ const data=ctx.getImageData(x0,y0,x1-x0,y1-y0).data;let green=0,orange=0;let gSumX=0,gSumY=0,oSumX=0,oSumY=0;
+ const rw=x1-x0;let pixels=0;
+ for(let i=0;i<data.length;i+=4){const [h,s,v]=hsv(data[i],data[i+1],data[i+2]);let idx=i/4,x=idx%rw,y=Math.floor(idx/rw);pixels++;
+ // Hue in Grad; Grün-Blau bei H 70–190, genügend S und V
+ if(h>=70&&h<=190&&s>=.18&&v>=.14){green++;gSumX+=x;gSumY+=y;}
+ // Orange Clamp: Sättigung und Helligkeit höher als bei brauner Holzunterlage
+ if(h>=8&&h<=49&&s>=.48&&v>=.42){orange++;oSumX+=x;oSumY+=y;}
+ }
+ const g=green/pixels*1e6,o=orange/pixels*1e6;
+ $('greenStat').textContent=Math.round(g).toLocaleString('de-DE');$('orangeStat').textContent=Math.round(o).toLocaleString('de-DE');
+ const greenDetected=g>=350&&g<=16000,orangeDetected=o>=2500&&o<=140000;
+ $('greenDot').className='dot'+(greenDetected?' on':'');$('orangeDot').className='dot orange'+(orangeDetected?' on':'');
+ // Farbflächen im Bild begrenzen. Reine Farbflächen, Holz oder extrem grüne Umgebungen nicht freigeben.
+ const interference=(g>16000||o>140000);
+ let near=true;
+ if(greenDetected&&orangeDetected){const dist=Math.hypot((gSumX/green-oSumX/orange)/rw,(gSumY/green-oSumY/orange)/(y1-y0));near=dist<.65;}
+ let result;
+ if(interference)result='interference';
+ else if(greenDetected&&orangeDetected&&near)result='both';
+ else if(greenDetected)result='greenOnly';
+ else if(orangeDetected)result='orangeOnly';
+ else result='none';
+ history.push(result);if(history.length>5)history.shift();
+ let counts={};history.forEach(k=>counts[k]=(counts[k]||0)+1);const stable=Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0];
+ if(history.length<3||counts[stable]<3){state('warn','Bild wird geprüft …','Position für mehrere Bilder ruhig halten.');return;}
+ render(stable,target.value);
+}
+function render(result,desired){const intrafix=desired==='intrafix_air';
+ if(result==='interference')state('warn','Farbhintergrund stört','Zu viel Grün oder Orange im Bild. Bitte eine weiße oder graue Unterlage verwenden.');
+ else if(result==='both')state(intrafix?'candidate':'bad',intrafix?'Intrafix: Merkmale passen vorläufig':'Merkmale weichen vom Soll ab',intrafix?'Türkisgrün UND orangefarbener Bereich gefunden. Nur ein Farb-Merkmalstest, noch keine sichere Leitungserkennung.':'Türkisgrünes Bauteil sichtbar; für Chiraplus-P wäre das ein Widerspruch zum bisherigen Merkmalsprofil. Keine endgültige Identifikation.');
+ else if(result==='greenOnly')state('warn','Grün erkannt – keine Leitung bestätigt','Türkisgrün vorhanden, aber keine passende orange Rollklemme nachgewiesen. Ein beliebiger grüner Gegenstand genügt nicht.');
+ else if(result==='orangeOnly')state('warn',intrafix?'Intrafix-Merkmal fehlt':'Chiraplus-P möglich – nicht bestätigt',intrafix?'Orange erkannt, aber kein türkisgrüner Anschluss. Prüfe Abstand, Sichtbarkeit und Licht.':'Orange erkannt, kein türkisgrünes Merkmal. Ohne Prüfung von Dorn und Tropfkammer bleibt die Identität unklar.');
+ else state('warn','Kein passender Artikel nachgewiesen','Keine ausreichende Merkmalskombination gefunden – leere Fläche, verdeckte Leitung oder unbekanntes Objekt möglich.');
+}
+start.addEventListener('click',()=>{if(stream){stop();state('','Kamera gestoppt','Zum Fortfahren Kamera starten.');}else camera();});
+flip.addEventListener('click',()=>{facing=facing==='environment'?'user':'environment';camera();});
+target.addEventListener('change',()=>{history=[];state('','Soll geändert','Der nächste Kameradurchlauf prüft den ausgewählten Sollartikel.');});
+file.addEventListener('change',async()=>{const f=file.files&&file.files[0];if(!f)return;try{const bm=await createImageBitmap(f);history=[];for(let i=0;i<5;i++)analyze(bm);bm.close();}catch(e){state('bad','Foto kann nicht geprüft werden',e.message);}});
+$('envInfo').textContent='HTTPS / sicherer Kontext: '+(window.isSecureContext?'ja':'nein')+' · Kamera-API: '+(navigator.mediaDevices?.getUserMedia?'bereit':'nicht bereit');
+window.addEventListener('pagehide',stop);
+})();
+</script>
+</body>
+</html>
